@@ -1,11 +1,21 @@
 const Enw  = require ('../libs/application')
-const app = new Enw();
+const Router = require('../middlewares/router')
+const app = new Enw()
+const router = new Router()
 
+router.get('/',(ctx,next)=>{
 
-app.router('GET','/text',(req,res)=>{
-    res.json({
-        errcode:0
-    })
+})
+
+app.use((ctx,next)=>{
+    console.log('执行')
+    setTimeout(()=>{
+        next()
+    },1000)
+})
+
+app.use((ctx,next)=>{
+    console.log('1s后执行')
 })
 
 app.listen(3001,()=>{

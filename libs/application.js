@@ -1,24 +1,15 @@
-
 const http = require('http');
 const Emitter = require('events');
-const { typeOf } = require('./util')
+const { typeOf } = require('./util');
 module.exports = class Application extends Emitter {
 
     constructor(options) {
         super();
         options = options || {};
         this.server = null;
-        this.middleware = [];
+        this.middleware = []; 
         this.request = Object.create(null);
         this.response = Object.create(null);
-        this.routerMap = {
-            GET:{},
-            POST:{},
-            PUT:{},
-            HEAD:{},
-            DELETE:{},
-        };
-        this.routerNumber = 0;
     }
 
     /**
@@ -31,7 +22,12 @@ module.exports = class Application extends Emitter {
         this.server = server;
         return server.listen(...args);
     }
- 
+
+    use(fn) {
+        if (typeof fn !== 'function') throw new TypeError('middleware must be a function!');
+        this.middleware.push(fn)
+    }
+
     /**
      * 处理请求
      * @param {*} req 
@@ -39,55 +35,61 @@ module.exports = class Application extends Emitter {
      * @api private
      */
     handleRequest(req, res) {
-        this.mergeRequest(req)
-        this.mergeResponse(res)
-        if (this.routerMap[req.method][req.url]) {
-            this.routerMap[req.method][req.url].callback(this.request, this.response)
-        }
+        const context = this.createContext(req, res)
+        this.handleMiddleWare(context)
+        this.handleRespond(context)
+        this.response.json({
+            errcode: 0
+        })
     }
 
-    handleRespond() {
-
-    }
-
-    mergeRequest(req) {
-        this.request.method = req.method || '';
-        this.request.headers = req.headers;
-        this.request.route = req.url;
-    }
-
-    mergeResponse(res) {
-        this.response.json = function (input) {
-            if (typeOf(input) != 'Object' && typeOf(input) != 'Array'){
+    handleRespond(context) {
+        context.res.json = function (input) {
+            if (typeOf(input) != 'Object' && typeOf(input) != 'Array') {
                 res.end('')
             }
             let str = JSON.stringify(input)
-            res.writeHead(200, { 'Content-type': 'text/plain'});
+            res.writeHead(context.status, { 'Content-type': 'text/plain' });
             res.write(str);
             res.end();
         }
-        this.response.html = function(html){
-            res.writeHead(200, { 'Content-type': 'text/html'});
+        context.req.html = function (html) {
+            res.writeHead(context.status, { 'Content-type': 'text/html' });
             res.write(html);
             res.end();
         }
     }
 
     /**
-     * 
-     * @param {*} method 
-     * @param {*} path 
-     * @param {*} callback 
-     * @api public
-     */
-    router(method, path, callback) {
-        const handler = {
-            id: this.routerNumber + 1,
-            method,
-            path,
-            callback,
+   * 初始化一个上下文
+   * @param {*} req 
+   * @param {*} res
+   * @api private
+   */
+    createContext(req, res) {
+        const context = Object.create(null);
+        context.req = req;
+        context.res = res;
+        context.originalUrl = req.url;
+    }
+
+    handleMiddleWare(ctx) {
+        let next = () => {
+            this.emit('middleWareNext');
         }
-        this.routerMap[method][path] = handler;
-        this.routerNumber += 1;
+        let n = 0;
+        this.middleware[0](ctx, next);
+        this.on('middleWareNext', () => {
+            n++;
+            if (n <= this.middleware.length - 1) {
+                try {
+                    this.middleware[n](ctx, next);
+                } catch (error) {
+                    console.log(error)
+                }
+            } else {
+                this.removeAllListeners('middleWareNext');
+            }
+        })
     }
 }
